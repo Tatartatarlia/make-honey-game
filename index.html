@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>酿桂花蜜</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            overflow: hidden;
+            background-color: #fdf5e6;
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            touch-action: none;
+        }
+        .screen-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            z-index: 10;
+        }
+        .hidden { display: none !important; }
+
+        #main-screen {
+            background: rgba(253, 245, 230, 0.95);
+            color: #8b5a2b;
+            text-align: center;
+        }
+        #main-screen h1 {
+            font-size: 36px;
+            margin-bottom: 10px;
+            color: #d4a373;
+            text-shadow: 1px 1px 2px rgba(255,255,255,0.8);
+        }
+        #main-screen p {
+            font-size: 16px;
+            margin: 6px 0;
+            color: #a67c52;
+            line-height: 1.6;
+        }
+        #main-screen .highlight { color: #ff8c00; font-weight: bold; }
+        #main-screen .danger { color: #cd5c5c; font-weight: bold; }
+        #main-screen .best-score {
+            margin-top: 10px;
+            font-size: 18px;
+            color: #d4a373;
+            font-weight: bold;
+        }
+        .btn {
+            margin-top: 20px;
+            padding: 14px 40px;
+            font-size: 20px;
+            background: #d4a373;
+            color: #fff;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            transition: transform 0.1s;
+        }
+        .btn:active { transform: scale(0.95); }
+        .btn-small {
+            padding: 8px 25px;
+            font-size: 16px;
+            border-radius: 15px;
+            margin: 10px 5px 0;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            z-index: 5;
+        }
+        #top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 20px;
+            font-weight: bold;
+            color: #8b5a2b;
+            text-shadow: 1px 1px 2px rgba(255,255,255,0.8);
+        }
+        #top-bar .left { display: flex; gap: 20px; }
+        #pause-btn {
+            pointer-events: auto;
+            background: rgba(255, 255, 255, 0.8);
+            border: 2px solid #d4a373;
+            color: #8b5a2b;
+            border-radius: 15px;
+            padding: 5px 15px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        #pause-screen { background: rgba(0, 0, 0, 0.6); }
+        #pause-screen h2 { margin-bottom: 20px; color: #fff; }
+        #end-screen { background: rgba(0, 0, 0, 0.75); }
+        #end-screen h2 { font-size: 32px; margin-bottom: 15px; color: #ffd700; }
+        #end-screen p { font-size: 18px; margin: 8px 0; }
+        #ratingText { font-size: 28px; font-weight: bold; margin-top: 15px; }
+        #newRecordTag {
+            font-size: 20px;
+            color: #ffd700;
+            font-weight: bold;
+            margin-top: 10px;
+            animation: pulse 0.8s infinite alternate;
+        }
+        @keyframes pulse {
+            from { transform: scale(1); opacity: 0.8; }
+            to { transform: scale(1.1); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<div id="ui-layer">
+    <div id="top-bar">
+        <div class="left">
+            <div>分数: <span id="scoreDisplay">0</span></div>
+            <div>时间: <span id="timeDisplay">60</span>s</div>
+        </div>
+        <button id="pause-btn">⏸ 暂停</button>
+    </div>
+</div>
+
+<div id="main-screen" class="screen-overlay">
+    <h1>🌸 酿桂花蜜 🌸</h1>
+    <p>玉兔将从屏幕两侧飞过</p>
+    <p>点击屏幕任意处，玉兔会放下手中的物品</p>
+    <p>物品带有玉兔的<span class="highlight">惯性</span>，需要预判落点</p>
+    <br>
+    <p>桂花落入瓶中 <span class="highlight">+9分</span></p>
+    <p>花枝落入瓶中 <span class="danger">-6分</span></p>
+    <p>落在瓶外不加分也不扣分</p>
+    <br>
+    <p style="font-size: 14px; color: #999;">最终分数 = 85 + 得分 / 3</p>
+    <div class="best-score" id="mainBestScore">历史最高：--</div>
+    <button id="start-btn" class="btn">开始酿蜜</button>
+</div>
+
+<div id="pause-screen" class="screen-overlay hidden">
+    <h2>游戏已暂停</h2>
+    <button id="resume-btn" class="btn">继续游戏</button>
+    <button id="quit-btn" class="btn btn-small" style="background:#aaa;">直接结算</button>
+</div>
+
+<div id="end-screen" class="screen-overlay hidden">
+    <h2>时间到！</h2>
+    <p>基础得分：<span id="finalBaseScore">0</span></p>
+    <p>最终分数：<span id="finalGradeScore">0</span></p>
+    <p id="ratingText">一般</p>
+    <div id="newRecordTag" class="hidden">🎉 新纪录！</div>
+    <p style="font-size: 14px; color: #ccc; margin-top: 10px;">历史最高：<span id="endBestScore">--</span></p>
+    <div style="margin-top: 20px;">
+        <button id="restartBtn" class="btn" style="margin-top: 0;">再酿一壶</button>
+        <button id="home-btn" class="btn btn-small" style="background:#aaa; margin-top: 10px;">回到主界面</button>
+    </div>
+</div>
+
+<script>
+    // ================= 配置参数 =================
+    const CONFIG = {
+        gameDuration: 60,          
+        rabbitIntervalMin: 0.6,    
+        rabbitIntervalMax: 1.2,    
+        osmanthusRate: 0.75,       
+        maxBranchStreak: 2,        
+        gravity: 600,              
+        
+        rabbitSpeedRatioMin: 0.25, 
+        rabbitSpeedRatioMax: 0.45, 
+        rabbitEscapeSpeedRatio: 1.2, 
+        
+        rabbitHeightMinRatio: 0.15,
+        rabbitHeightMaxRatio: 0.40,
+        bottleWidthRatio: 0.18,    
+        bottleHeightRatio: 0.30,   
+        osmanthusScore: 9,         
+        branchScore: -6,
+        
+        stirDuration: 0.9          // ★ 搅拌动画时长（秒）
+    };
+
+    // ================= 初始化 =================
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    const scoreDisplay = document.getElementById('scoreDisplay');
+    const timeDisplay = document.getElementById('timeDisplay');
+    const mainScreen = document.getElementById('main-screen');
+    const pauseScreen = document.getElementById('pause-screen');
+    const endScreen = document.getElementById('end-screen');
+    const finalBaseScoreEl = document.getElementById('finalBaseScore');
+    const finalGradeScoreEl = document.getElementById('finalGradeScore');
+    const ratingTextEl = document.getElementById('ratingText');
+    const mainBestScoreEl = document.getElementById('mainBestScore');
+    const endBestScoreEl = document.getElementById('endBestScore');
+    const newRecordTag = document.getElementById('newRecordTag');
+
+    // ★ 历史最高分
+    let highScore = parseInt(localStorage.getItem('osmanthusHighScore') || '0', 10);
+
+    function updateBestScoreDisplay() {
+        if (highScore > 0) {
+            mainBestScoreEl.textContent = '历史最高：' + highScore + ' 分';
+        } else {
+            mainBestScoreEl.textContent = '历史最高：--';
+        }
+    }
+
+    let width, height;
+    function resize() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+        initBottle(); 
+    }
+    window.addEventListener('resize', resize);
+
+    // ================= 游戏状态 =================
+    let gameState = 'ready'; 
+    let score = 0;
+    let timeLeft = CONFIG.gameDuration;
+    let lastTime = 0;
+    let spawnTimer = 0;
+    let nextSpawnInterval = 0;
+    let branchStreak = 0;
+    
+    let rabbit = null; 
+    let items = [];    
+    let particles = []; 
+
+    // ★ 搅拌动画状态
+    const stir = {
+        isPlaying: false,
+        progress: 0,
+        queue: 0        // 排队等待的搅拌次数
+    };
+
+    const bottle = {
+        w: 0, h: 0,
+        x: 0, y: 0,
+        liquidHeight: 0,
+        maxLiquidHeight: 0
+    };
+
+    function initBottle() {
+        const maxH = height / 3;
+        bottle.w = width * CONFIG.bottleWidthRatio;
+        bottle.h = Math.min(maxH, bottle.w * 1.6); 
+        
+        bottle.x = width / 2 - bottle.w / 2;
+        bottle.y = height - bottle.h - 30; 
+        bottle.maxLiquidHeight = bottle.h - 40;
+        bottle.liquidHeight = 0;
+    }
+
+    function initParticles() {
+        particles = [];
+        for (let i = 0; i < 20; i++) {
+            particles.push({
+                x: Math.random() * width,
+                y: Math.random() * height,
+                size: Math.random() * 3 + 2,
+                speedY: Math.random() * 20 + 10,
+                speedX: (Math.random() - 0.5) * 15,
+                angle: Math.random() * Math.PI * 2,
+                rotSpeed: (Math.random() - 0.5) * 1
+            });
+        }
+    }
+
+    // ================= 音频（Web Audio API） =================
+    let audioCtx = null;
+
+    function initAudio() {
+        if (!audioCtx) {
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            } catch (e) {
+                console.log('浏览器不支持 Web Audio API');
+            }
+        }
+        if (audioCtx && audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+    }
+
+    // 桂花落入音效：清脆“叮”
+    function playOsmanthusSound() {
+        if (!audioCtx) return;
+        const now = audioCtx.currentTime;
+        
+        // 主音
+        const osc1 = audioCtx.createOscillator();
+        const gain1 = audioCtx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(1200, now);
+        osc1.frequency.exponentialRampToValueAtTime(800, now + 0.15);
+        gain1.gain.setValueAtTime(0.12, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+        osc1.connect(gain1);
+        gain1.connect(audioCtx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.22);
+        
+        // 高频泛音
+        const osc2 = audioCtx.createOscillator();
+        const gain2 = audioCtx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(1800, now);
+        osc2.frequency.exponentialRampToValueAtTime(1400, now + 0.12);
+        gain2.gain.setValueAtTime(0.06, now);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+        osc2.connect(gain2);
+        gain2.connect(audioCtx.destination);
+        osc2.start(now);
+        osc2.stop(now + 0.15);
+    }
+
+    // 花枝落入音效：低沉“噗”
+    function playBranchSound() {
+        if (!audioCtx) return;
+        const now = audioCtx.currentTime;
+        
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(300, now);
+        osc.frequency.exponentialRampToValueAtTime(120, now + 0.2);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.28);
+    }
+
+    // 搅拌音效：白噪声 + 带通滤波，模拟摩擦声
+    function playStirSound(duration) {
+        if (!audioCtx) return;
+        const now = audioCtx.currentTime;
+        const bufferSize = Math.floor(audioCtx.sampleRate * duration);
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+        
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 700;
+        filter.Q.value = 1.2;
+        
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.07, now + 0.08);
+        gain.gain.linearRampToValueAtTime(0.07, now + duration - 0.15);
+        gain.gain.linearRampToValueAtTime(0, now + duration);
+        
+        source.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioCtx.destination);
+        source.start(now);
+        source.stop(now + duration);
+    }
+
+    // ★ 请求一次搅拌：如果正在搅拌，则排队
+    function requestStir() {
+        if (stir.isPlaying) {
+            stir.queue++;
+        } else {
+            startStir();
+        }
+    }
+
+    function startStir() {
+        stir.isPlaying = true;
+        stir.progress = 0;
+        playStirSound(CONFIG.stirDuration);
+    }
+
+    // ================= 游戏对象 =================
+    class Rabbit {
+        constructor() {
+            const dir = Math.random() < 0.5 ? 1 : -1; 
+            const speedRatio = CONFIG.rabbitSpeedRatioMin + Math.random() * (CONFIG.rabbitSpeedRatioMax - CONFIG.rabbitSpeedRatioMin);
+            const speed = width * speedRatio; 
+            
+            const minY = height * CONFIG.rabbitHeightMinRatio;
+            const maxY = height * CONFIG.rabbitHeightMaxRatio;
+            this.y = minY + Math.random() * (maxY - minY);
+
+            this.x = dir === 1 ? -60 : width + 60;
+            this.vx = dir * speed;
+            this.dir = dir;
+            
+            if (branchStreak >= CONFIG.maxBranchStreak) {
+                this.type = 'osmanthus';
+                branchStreak = 0;
+            } else {
+                this.type = Math.random() < CONFIG.osmanthusRate ? 'osmanthus' : 'branch';
+                if (this.type === 'branch') {
+                    branchStreak++;
+                } else {
+                    branchStreak = 0;
+                }
+            }
+            
+            this.dropped = false;
+            this.expired = false; 
+            this.scale = 0.8 + Math.random() * 0.3;
+        }
+
+        update(dt) {
+            this.x += this.vx * dt;
+            if (this.dir === 1 && this.x > width + 60) this.expired = true;
+            if (this.dir === -1 && this.x < -60) this.expired = true;
+        }
+
+        draw() {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            if (this.dir === -1) ctx.scale(-1, 1);
+            ctx.scale(this.scale, this.scale);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = '#d3d3d3';
+            ctx.lineWidth = 2;
+
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 25, 18, 0, 0, Math.PI * 2);
+            ctx.fill(); ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(20, -5, 14, 0, Math.PI * 2);
+            ctx.fill(); ctx.stroke();
+
+            ctx.beginPath();
+            ctx.ellipse(15, -25, 6, 15, -0.2, 0, Math.PI * 2);
+            ctx.fill(); ctx.stroke();
+            ctx.beginPath();
+            ctx.ellipse(25, -25, 6, 15, 0.2, 0, Math.PI * 2);
+            ctx.fill(); ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(-25, 5, 7, 0, Math.PI * 2);
+            ctx.fill(); ctx.stroke();
+
+            ctx.fillStyle = '#333';
+            ctx.beginPath();
+            ctx.arc(23, -7, 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            if (!this.dropped) {
+                ctx.save();
+                ctx.translate(25, 10);
+                if (this.type === 'osmanthus') {
+                    drawOsmanthus(ctx);
+                } else {
+                    drawBranch(ctx);
+                }
+                ctx.restore();
+            }
+            ctx.restore();
+        }
+    }
+
+    class Item {
+        constructor(x, y, vx, type) {
+            this.x = x;
+            this.y = y;
+            this.vx = vx;
+            this.vy = 0; 
+            this.type = type;
+            this.radius = type === 'osmanthus' ? 12 : 15;
+            this.rot = 0;
+            this.rotSpeed = (Math.random() - 0.5) * 5;
+            this.active = true;
+            this.scored = false;
+        }
+
+        update(dt) {
+            if (!this.active) return;
+            this.vy += CONFIG.gravity * dt;
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
+            this.rot += this.rotSpeed * dt;
+
+            if (!this.scored && this.y + this.radius >= bottle.y && this.y - this.radius <= bottle.y + 60) {
+                let itemLeft = this.x - this.radius * 0.6;
+                let itemRight = this.x + this.radius * 0.6;
+                
+                if (itemRight > bottle.x && itemLeft < bottle.x + bottle.w) {
+                    this.scored = true;
+                    this.active = false; 
+                    
+                    if (this.type === 'osmanthus') {
+                        score += CONFIG.osmanthusScore;
+                        bottle.liquidHeight = Math.min(bottle.liquidHeight + 10, bottle.maxLiquidHeight);
+                        playOsmanthusSound();  // ★ 桂花落入音效
+                        requestStir();         // ★ 请求搅拌动画+音效
+                    } else {
+                        score += CONFIG.branchScore;
+                        bottle.liquidHeight = Math.max(0, bottle.liquidHeight - 6);
+                        playBranchSound();     // ★ 花枝落入音效（只响不搅拌）
+                    }
+                    updateUI();
+                }
+            }
+
+            if (this.y - this.radius > height) {
+                this.active = false;
+            }
+        }
+
+        draw() {
+            if (!this.active) return;
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.rot);
+            if (this.type === 'osmanthus') {
+                drawOsmanthus(ctx, true);
+            } else {
+                drawBranch(ctx, true);
+            }
+            ctx.restore();
+        }
+    }
+
+    // ================= 绘制辅助函数 =================
+    function drawOsmanthus(ctx, isDrop = false) {
+        const scale = isDrop ? 1 : 0.8;
+        ctx.scale(scale, scale);
+        const count = isDrop ? 5 : 3;
+        for (let i = 0; i < count; i++) {
+            const angle = (Math.PI * 2 / count) * i;
+            const r = isDrop ? 6 : 4;
+            const cx = Math.cos(angle) * r;
+            const cy = Math.sin(angle) * r;
+            
+            ctx.beginPath();
+            ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+            ctx.fillStyle = i % 2 === 0 ? '#ffd700' : '#ffb347';
+            ctx.fill();
+            ctx.strokeStyle = '#d4a017';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+        ctx.beginPath();
+        ctx.arc(0, 0, 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffefd5';
+        ctx.fill();
+    }
+
+    function drawBranch(ctx, isDrop = false) {
+        const scale = isDrop ? 1 : 0.8;
+        ctx.scale(scale, scale);
+        ctx.beginPath();
+        ctx.moveTo(-10, 10);
+        ctx.quadraticCurveTo(0, 0, 12, -12);
+        ctx.strokeStyle = '#8b5a2b';
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.ellipse(-5, -2, 8, 4, -0.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#6b8e23';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.ellipse(6, -8, 7, 3.5, 0.8, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    function drawBackground() {
+        const grad = ctx.createLinearGradient(0, 0, 0, height);
+        grad.addColorStop(0, '#fff9e6');
+        grad.addColorStop(1, '#fdf0d5');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, width, height);
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.beginPath();
+        ctx.arc(width * 0.2, height * 0.2, 80, 0, Math.PI * 2);
+        ctx.arc(width * 0.35, height * 0.15, 100, 0, Math.PI * 2);
+        ctx.arc(width * 0.8, height * 0.3, 90, 0, Math.PI * 2);
+        ctx.fill();
+
+        particles.forEach(p => {
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.angle);
+            ctx.globalAlpha = 0.4;
+            drawOsmanthus(ctx, false);
+            ctx.restore();
+        });
+    }
+
+    function drawBottle() {
+        ctx.save();
+        const bx = bottle.x;
+        const by = bottle.y;
+        const bw = bottle.w;
+        const bh = bottle.h;
+
+        // 瓶口
+        ctx.beginPath();
+        ctx.moveTo(bx + bw * 0.2, by);
+        ctx.lineTo(bx + bw * 0.8, by);
+        ctx.lineTo(bx + bw, by + 20);
+        ctx.lineTo(bx, by + 20);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(200, 230, 255, 0.4)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(150, 200, 230, 0.8)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // 瓶身
+        ctx.beginPath();
+        ctx.moveTo(bx, by + 20);
+        ctx.lineTo(bx + bw, by + 20);
+        ctx.lineTo(bx + bw, by + bh);
+        ctx.quadraticCurveTo(bx + bw, by + bh + 10, bx + bw / 2, by + bh + 10);
+        ctx.quadraticCurveTo(bx, by + bh + 10, bx, by + bh);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(200, 230, 255, 0.3)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(150, 200, 230, 0.8)';
+        ctx.stroke();
+
+        // 液体
+        if (bottle.liquidHeight > 0) {
+            const liquidY = by + bh - bottle.liquidHeight;
+            ctx.beginPath();
+            ctx.moveTo(bx + 2, liquidY);
+            ctx.lineTo(bx + bw - 2, liquidY);
+            ctx.lineTo(bx + bw - 2, by + bh);
+            ctx.quadraticCurveTo(bx + bw - 2, by + bh + 8, bx + bw / 2, by + bh + 8);
+            ctx.quadraticCurveTo(bx + 2, by + bh + 8, bx + 2, by + bh);
+            ctx.closePath();
+
+            const liquidGrad = ctx.createLinearGradient(0, liquidY, 0, by + bh);
+            liquidGrad.addColorStop(0, '#ffd700');
+            liquidGrad.addColorStop(1, '#ff8c00');
+            ctx.fillStyle = liquidGrad;
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(bx + 2, liquidY);
+            ctx.lineTo(bx + bw - 2, liquidY);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        // ★ 绘制搅拌棒（在液体之上，看起来像插在瓶内）
+        if (stir.isPlaying) {
+            drawStirrer();
+        }
+
+        ctx.restore();
+    }
+
+    // ★ 绘制搅拌棒
+        // ★ 绘制搅拌棒（左右平移版）
+    function drawStirrer() {
+        const bx = bottle.x;
+        const by = bottle.y;
+        const bw = bottle.w;
+        const bh = bottle.h;
+        const centerX = bx + bw / 2;
+        
+        // 搅拌棒顶端（瓶口上方）
+        const stickTop = by - 25;
+        // 搅拌棒底端（在液体中）
+        const stickBottom = by + bh - 15;
+        const stickLength = stickBottom - stickTop;
+        
+        // 左右平移幅度：瓶子宽度的 25%
+        const amplitude = bw * 0.25;
+        // 摆动频率：约 3 个来回
+        const t = stir.progress / CONFIG.stirDuration;
+        const offsetX = Math.sin(t * Math.PI * 6) * amplitude;
+        
+        ctx.save();
+        ctx.translate(centerX + offsetX, 0);
+        
+        // 搅拌棒主体（保持垂直）
+        ctx.beginPath();
+        ctx.moveTo(0, stickTop);
+        ctx.lineTo(0, stickBottom);
+        ctx.strokeStyle = '#a0522d';
+        ctx.lineWidth = 5;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+        
+        // 搅拌棒手柄（顶端小圆）
+        ctx.beginPath();
+        ctx.arc(0, stickTop - 5, 6, 0, Math.PI * 2);
+        ctx.fillStyle = '#8b5a2b';
+        ctx.fill();
+        
+        // 搅拌棒头部（底端小圆）
+        ctx.beginPath();
+        ctx.arc(0, stickBottom, 7, 0, Math.PI * 2);
+        ctx.fillStyle = '#8b5a2b';
+        ctx.fill();
+        
+        ctx.restore();
+    }
+
+    // ================= 游戏逻辑 =================
+    function updateUI() {
+        scoreDisplay.textContent = score;
+        timeDisplay.textContent = Math.ceil(timeLeft);
+    }
+
+    function spawnRabbit() {
+        if (rabbit) return; 
+        rabbit = new Rabbit();
+    }
+
+    function handleClick() {
+        if (gameState !== 'playing' || !rabbit || rabbit.dropped) return;
+
+        rabbit.dropped = true;
+        items.push(new Item(rabbit.x, rabbit.y + 10, rabbit.vx, rabbit.type));
+        
+        const escapeSpeed = width * CONFIG.rabbitEscapeSpeedRatio;
+        rabbit.vx = rabbit.dir * escapeSpeed;
+    }
+
+    function endGame() {
+        gameState = 'ended';
+        const finalGradeScore = Math.round(85 + score / 3);
+        finalBaseScoreEl.textContent = score;
+        finalGradeScoreEl.textContent = finalGradeScore;
+
+        let rating = '一般';
+        if (finalGradeScore > 130) rating = '优秀';
+        else if (finalGradeScore >= 101) rating = '良好';
+        ratingTextEl.textContent = rating;
+
+        // ★ 更新历史最高分
+        if (finalGradeScore > highScore) {
+            highScore = finalGradeScore;
+            localStorage.setItem('osmanthusHighScore', highScore.toString());
+            newRecordTag.classList.remove('hidden');
+        } else {
+            newRecordTag.classList.add('hidden');
+        }
+        updateBestScoreDisplay();
+        endBestScoreEl.textContent = highScore + ' 分';
+
+        endScreen.classList.remove('hidden');
+        pauseScreen.classList.add('hidden');
+    }
+
+    function resetGame() {
+        gameState = 'playing';
+        score = 0;
+        timeLeft = CONFIG.gameDuration;
+        rabbit = null;
+        items = [];
+        spawnTimer = 1.0; 
+        nextSpawnInterval = 0;
+        branchStreak = 0;
+        stir.isPlaying = false;
+        stir.progress = 0;
+        stir.queue = 0;
+        initBottle();
+        updateUI();
+        endScreen.classList.add('hidden');
+        pauseScreen.classList.add('hidden');
+    }
+
+    // ================= 主循环 =================
+    function gameLoop(timestamp) {
+        if (!lastTime) lastTime = timestamp;
+        let dt = (timestamp - lastTime) / 1000;
+        lastTime = timestamp;
+
+        if (dt > 0.1) dt = 0.1;
+
+        if (gameState === 'playing') {
+            timeLeft -= dt;
+            if (timeLeft <= 0) {
+                timeLeft = 0;
+                updateUI();
+                gameState = 'ending'; 
+            } else {
+                updateUI();
+            }
+        }
+
+        if (gameState === 'playing' || gameState === 'ending') {
+            // 更新玉兔
+            if (rabbit) {
+                rabbit.update(dt);
+                if (rabbit.expired) {
+                    rabbit = null;
+                    if (gameState === 'playing') {
+                        nextSpawnInterval = CONFIG.rabbitIntervalMin + Math.random() * (CONFIG.rabbitIntervalMax - CONFIG.rabbitIntervalMin);
+                        spawnTimer = nextSpawnInterval;
+                    }
+                }
+            }
+
+            if (gameState === 'playing' && !rabbit) {
+                spawnTimer -= dt;
+                if (spawnTimer <= 0) {
+                    spawnRabbit();
+                }
+            }
+
+            // 更新掉落物
+            for (let i = items.length - 1; i >= 0; i--) {
+                items[i].update(dt);
+                if (!items[i].active) {
+                    items.splice(i, 1);
+                }
+            }
+
+            // ★ 更新搅拌动画状态机
+            if (stir.isPlaying) {
+                stir.progress += dt;
+                if (stir.progress >= CONFIG.stirDuration) {
+                    stir.isPlaying = false;
+                    stir.progress = 0;
+                    // 队列中有等待的搅拌，立刻开始下一个
+                    if (stir.queue > 0) {
+                        stir.queue--;
+                        startStir();
+                    }
+                }
+            }
+
+            // 更新背景粒子
+            particles.forEach(p => {
+                p.y += p.speedY * dt;
+                p.x += p.speedX * dt;
+                p.angle += p.rotSpeed * dt;
+                if (p.y > height + 20) {
+                    p.y = -20;
+                    p.x = Math.random() * width;
+                }
+            });
+
+            if (gameState === 'ending' && items.length === 0 && !rabbit) {
+                endGame();
+            }
+        }
+
+        ctx.clearRect(0, 0, width, height);
+        drawBackground();
+        drawBottle();
+        if (rabbit) rabbit.draw();
+        items.forEach(item => item.draw());
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    // ================= 事件监听 =================
+    canvas.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        initAudio(); // 用户首次点击时初始化/恢复音频
+        handleClick();
+    });
+
+    document.getElementById('start-btn').addEventListener('click', () => {
+        initAudio();
+        mainScreen.classList.add('hidden');
+        resetGame();
+    });
+
+    document.getElementById('pause-btn').addEventListener('click', () => {
+        if (gameState === 'playing') {
+            gameState = 'paused';
+            pauseScreen.classList.remove('hidden');
+        }
+    });
+
+    document.getElementById('resume-btn').addEventListener('click', () => {
+        if (gameState === 'paused') {
+            gameState = 'playing';
+            pauseScreen.classList.add('hidden');
+            lastTime = 0; 
+        }
+    });
+
+    document.getElementById('quit-btn').addEventListener('click', () => {
+        if (gameState === 'paused') {
+            endGame();
+        }
+    });
+
+    document.getElementById('restartBtn').addEventListener('click', () => {
+        resetGame();
+    });
+
+    document.getElementById('home-btn').addEventListener('click', () => {
+        endScreen.classList.add('hidden');
+        mainScreen.classList.remove('hidden');
+        gameState = 'ready';
+    });
+
+    // ================= 启动 =================
+    resize();
+    initParticles();
+    updateUI();
+    updateBestScoreDisplay();
+    requestAnimationFrame(gameLoop);
+
+</script>
+</body>
+</html>
